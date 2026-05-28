@@ -268,7 +268,7 @@ class O5LTKExchanger {
         let sequenceNum = 0 // 4-bit Omnipod command sequence #
         let message = Message(address: address, messageBlocks: [GetStatusCommand()], sequenceNum: sequenceNum)
         let encoded = message.encoded()
-        log.debug("Encoded SP2 get status command for address 0x%x and seq # %u: %@", address, seq, encoded.hexadecimalString)
+        log.debug("Encoded SP2 get status command for address 0x%llx and seq # %llu: %@", address, seq, encoded.hexadecimalString)
         return encoded
     }
 
@@ -314,7 +314,7 @@ class O5LTKExchanger {
         let expectedCRC = O5LTKExchanger.crc16XMODEM(header)
         let receivedCRC = payload[3...].toBigEndian(UInt16.self)
         guard expectedCRC == receivedCRC else {
-            throw PodProtocolError.pairingException("SPS0 CRC mismatch: expected \(String(format: "%04x", expectedCRC)), received \(String(format: "%04x", receivedCRC))")
+            throw PodProtocolError.pairingException("SPS0 CRC mismatch: expected \(String(format: "%04llx", expectedCRC)), received \(String(format: "%04llx", receivedCRC))")
         }
     }
 
@@ -435,7 +435,7 @@ class O5LTKExchanger {
 
         // Build the 171-byte channel-binding transcript and sign with secondary key
         let transcript = keyExchange.buildChannelBindingTranscript()
-        log.info("Channel-binding transcript (%d bytes): %{public}@", transcript.count, transcript.bytes.toHexString())
+        log.info("Channel-binding transcript (%lld bytes): %{public}@", transcript.count, transcript.bytes.toHexString())
 
         let signatureRaw = try certStore.signRaw(transcript)
         log.info("ECDSA signature (64 bytes): %{public}@", signatureRaw.bytes.toHexString())

@@ -122,7 +122,7 @@ class BluetoothManager: NSObject {
     func setUuidPdmId(_ pdmId: UInt32?) {
         managerQueue.async {
             if let pdmId = pdmId, pdmId != 0 {
-                self.log.bleDebug("Setting uuidPdmId to 0x%x", pdmId)
+                self.log.bleDebug("Setting uuidPdmId to 0x%llx", pdmId)
                 self.uuidPdmId = pdmId
             } else {
                 self.uuidPdmId = nil

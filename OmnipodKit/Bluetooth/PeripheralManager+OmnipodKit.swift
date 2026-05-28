@@ -281,7 +281,7 @@ extension PeripheralManager {
                 }
 
                 // Unexpected command that isn't PAIR_STATUS
-                log.error("waitForCommand failed. rawValue != value[0] (%d != %d); data=%@", command.rawValue, value[0], value.hexadecimalString)
+                log.error("waitForCommand failed. rawValue != value[0] (%lld != %lld); data=%@", command.rawValue, value[0], value.hexadecimalString)
                 queueLock.unlock()
                 commandLock.unlock()
                 throw PeripheralManagerError.incorrectResponse
@@ -337,7 +337,7 @@ extension PeripheralManager {
             let data = dataQueue.remove(at: 0)
             
             if (data[0] != sequence) {
-                log.error("waitForData failed data[0] != sequence (%d != %d).", data[0], sequence)
+                log.error("waitForData failed data[0] != sequence (%lld != %lld).", data[0], sequence)
                 throw PeripheralManagerError.incorrectResponse
             }
             return data
