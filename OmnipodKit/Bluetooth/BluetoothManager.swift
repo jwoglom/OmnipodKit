@@ -400,7 +400,7 @@ extension BluetoothManager: CBCentralManagerDelegate {
         log.debug("%{public}@: %{public}@, %{public}@", #function, peripheral, advertisementData)
 
         if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
-            log.default("[SCAN] ManufacturerData: %{public}@ (%{public}d bytes)", mfgData.hexadecimalString, mfgData.count)
+            log.default("[SCAN] ManufacturerData: %{public}@ (%{public}lld bytes)", mfgData.hexadecimalString, mfgData.count)
         }
 
         if let podAdvertisement = PodAdvertisement(advertisementData, podType: podType) {
