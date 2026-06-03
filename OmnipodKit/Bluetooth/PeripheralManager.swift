@@ -460,8 +460,32 @@ extension PeripheralManager: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        // [RX-OBSERVE] Observation instrumentation for the periodic-commands /
+        // pod-driven-heartbeat investigation. Logs every inbound characteristic
+        // update with its per-UUID inter-arrival interval and raw bytes, so we
+        // can see (a) whether the 7DED7A6C heartbeat fires autonomously and how
+        // often, and (b) whether anything arrives unsolicited on the DATA char
+        // between command exchanges. Pure logging — no behavior change. Safe to
+        // remove. Filter Console.app on "RX-OBSERVE" (subsystem
+        // com.loopkit.OmnipodKit).
+        do {
+            let now = Date()
+            let uuid = characteristic.uuid
+            let intervalStr: String
+            if let prev = PeripheralManager.rxObserveLastSeen[uuid] {
+                intervalStr = String(format: "%.2fs", now.timeIntervalSince(prev))
+            } else {
+                intervalStr = "first"
+            }
+            PeripheralManager.rxObserveLastSeen[uuid] = now
+            let hex = characteristic.value?.hexadecimalString ?? "<nil>"
+            let len = characteristic.value?.count ?? 0
+            log.default("[RX-OBSERVE] char=%{public}@ delta=%{public}@ len=%{public}@ bytes=%{public}@",
+                        uuid.uuidString, intervalStr, String(len), hex)
+        }
+
         commandLock.lock()
-        
+
         if let macro = configuration.valueUpdateMacros[characteristic.uuid] {
             macro(self)
         }
@@ -594,6 +618,12 @@ extension PeripheralManager {
     /// Timestamp of the last heartbeat received from the O5 pod
     private static var lastHeartbeatTime: Date?
 
+    /// [RX-OBSERVE] Per-characteristic last-seen timestamps, used only to
+    /// measure the cadence of unsolicited pod pushes during the
+    /// periodic-commands investigation. Observation instrumentation — safe to
+    /// remove; no behavior depends on it.
+    static var rxObserveLastSeen: [CBUUID: Date] = [:]
+
     static func mostRecentHeartbeatTime() -> Date? {
         return lastHeartbeatTime
     }
@@ -601,8 +631,16 @@ extension PeripheralManager {
     /// Handle a heartbeat notification from the O5 pod.
     /// This resets the idle timer to keep the connection alive.
     func handleHeartbeat() {
-        PeripheralManager.lastHeartbeatTime = Date()
-        log.debug("Received O5 heartbeat at %{public}@", String(describing: PeripheralManager.lastHeartbeatTime))
+        let now = Date()
+        // [RX-OBSERVE] Is the 7DED7A6C beacon autonomous, and at what cadence?
+        if let prev = PeripheralManager.lastHeartbeatTime {
+            log.default("[RX-OBSERVE] O5 heartbeat (7DED7A6C) interval=%{public}@",
+                        String(format: "%.1fs", now.timeIntervalSince(prev)))
+        } else {
+            log.default("[RX-OBSERVE] O5 heartbeat (7DED7A6C) first beat")
+        }
+        PeripheralManager.lastHeartbeatTime = now
+        log.debug("Received O5 heartbeat at %{public}@", String(describing: now))
 
         // Reset idle timer when we receive a heartbeat
         self.queue.async {
