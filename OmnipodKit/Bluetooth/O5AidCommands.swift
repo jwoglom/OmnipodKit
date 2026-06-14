@@ -62,6 +62,19 @@ struct O5AidCommands {
         return Data(command.utf8)
     }
 
+    /// Constructs a SET-only command payload with ASCII text data (no trailing GET).
+    ///
+    /// Wire format: `S[f].[a]=[ASCII data]`
+    ///
+    /// This differs from `setGetPayload`, which always appends `,G[f].[a]`. The
+    /// periodic-command configuration command (see `PeriodicCommandConfig`) uses
+    /// this SET-only shape — the iOS app's static decode shows the config command
+    /// has no GET suffix.
+    static func setOnlyPayload(feature: String, attribute: String, data: String) -> Data {
+        let command = "S\(feature).\(attribute)=\(data)"
+        return Data(command.utf8)
+    }
+
     /// Constructs an Extended SET command payload with ASCII text data.
     ///
     /// Wire format: `SE[f].[a]=[ASCII data]`
@@ -252,6 +265,87 @@ struct O5AidCommands {
             let payload = O5AidCommands.getPayload(feature: feature, attribute: attribute)
             let prefix = O5AidCommands.responsePrefix(feature: feature, attribute: attribute)
             return (payload, prefix)
+        }
+    }
+
+    // MARK: - Periodic Command Configuration (EXPERIMENTAL — UNCONFIRMED ON THE WIRE)
+    //
+    // Reconstructed from a static decode of the iOS Omnipod 5 app (TWISDK). This
+    // builds the *configuration* command that asks the pod to autonomously emit a
+    // chosen command (in practice: the Status poll) on a fixed interval — the
+    // pod-driven "heartbeat".
+    //
+    // ┌──────────────────────────────────────────────────────────────────────┐
+    // │ IMPORTANT: building this payload is harmless and unit-testable, but    │
+    // │ ACTUALLY SENDING it is NOT yet safe. The current OmnipodKit transport  │
+    // │ is strictly synchronous request→single-response→ACK (see              │
+    // │ BleMessageTransport.sendO5AidCommand). It has no always-on consumer    │
+    // │ for the unsolicited Status frames the pod would then push onto the     │
+    // │ DATA characteristic. Those frames would land in the shared dataQueue   │
+    // │ and be mis-consumed as the next command's response (wrong payload +    │
+    // │ wrong decrypt nonce → comms break / "queue poisoning"). A decrypt-     │
+    // │ then-route RX path plus out-of-band nonce/seq/msgSeq handling and      │
+    // │ per-emission ACKs must land first. See                                 │
+    // │ analysis/omnipodkit_periodic_command_design.md.                        │
+    // └──────────────────────────────────────────────────────────────────────┘
+    //
+    // Wire format (iOS template `SN%@.0=%d`):
+    //   S  N<command-list> . 0 = <period-seconds>     (SET-only, no `,G` suffix)
+    //   e.g. Status every 60s → "SN2.0=60" = 53 4E 32 2E 30 3D 36 30
+    //   disable → period 0 → "SN2.0=0"
+    //
+    // UNCONFIRMED / open questions (do not treat the bytes as final):
+    //   • Command-list token rendering: iOS maps each app command id through
+    //     TWICommandIds.getSDKReservedCommandId: and joins tokens with spaces
+    //     ("%@ %@ "). Whether Status renders as "2", a name string, or a numeric
+    //     AID id — and how multiple tokens are delimited inside the feature slot
+    //     — is unresolved without a Frida hook on the iOS -stringWithFormat: site.
+    //     We default to "2" (TWICommandIds id 2 = Status) for a single command.
+    //   • Period upper bound (~288000s / 80h) is r2's read of an fcmp and is NOT
+    //     independently confirmed. The 60s lower bound and 0=disable ARE confirmed.
+    //   • Response/ack format for this SET-only command is not byte-confirmed.
+    struct PeriodicCommandConfig {
+        static let feature = "N"
+        static let attribute = "0"
+
+        /// TWICommandIds id for the pod Status command (the periodic payload).
+        static let statusCommandToken = "2"
+
+        /// Confirmed lower bound on the period, in seconds (iOS `fcmp d8, 60.0`).
+        static let minPeriodSeconds = 60
+        /// UNCONFIRMED upper bound (iOS r2 read of `fcmp d8, 288000.0`, ~80h).
+        static let maxPeriodSecondsUnconfirmed = 288000
+        /// Period value that disables periodic emission (iOS `fmov d0, xzr`).
+        static let disablePeriodSeconds = 0
+
+        enum ConfigError: Error {
+            /// Period was non-zero but below the confirmed 60s floor.
+            case periodBelowMinimum(Int)
+        }
+
+        /// Builds the periodic-command configuration payload.
+        ///
+        /// - Parameters:
+        ///   - periodSeconds: emission interval in seconds. `0` disables periodic
+        ///     emission. Any other value must be ≥ `minPeriodSeconds` (60).
+        ///   - commandTokens: the TWICommandIds tokens to register; defaults to
+        ///     `[statusCommandToken]` (Status only). NOTE: multi-token delimiting
+        ///     is unconfirmed (see type doc); tokens are currently concatenated.
+        /// - Returns: `(data, responsePrefix)` in the same shape as the other
+        ///   `O5AidCommands` builders. The `responsePrefix` is a best-effort guess
+        ///   (`N<list>.0=`) and is NOT byte-confirmed.
+        static func payload(periodSeconds: Int,
+                            commandTokens: [String] = [statusCommandToken]) throws -> (data: Data, responsePrefix: String) {
+            if periodSeconds != disablePeriodSeconds && periodSeconds < minPeriodSeconds {
+                throw ConfigError.periodBelowMinimum(periodSeconds)
+            }
+            let list = commandTokens.joined()
+            let featureWithList = feature + list   // "N" + "2" → "N2"
+            let data = O5AidCommands.setOnlyPayload(feature: featureWithList,
+                                                    attribute: attribute,
+                                                    data: "\(periodSeconds)")
+            let prefix = O5AidCommands.responsePrefix(feature: featureWithList, attribute: attribute)
+            return (data, prefix)
         }
     }
 }

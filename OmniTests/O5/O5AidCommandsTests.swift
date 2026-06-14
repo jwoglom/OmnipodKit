@@ -82,4 +82,35 @@ class O5AidCommandsTests: XCTestCase {
         XCTAssertEqual(O5AidCommands.responsePrefix(feature: "3", attribute: "9"), "3.9=")
         XCTAssertEqual(O5AidCommands.extendedSetResponsePrefix(feature: "255", attribute: "2"), "ES255.2=")
     }
+
+    // MARK: - Periodic command configuration (EXPERIMENTAL; iOS static decode)
+
+    func testPeriodicConfig_statusEvery60s_byteExact() throws {
+        // iOS template SN%@.0=%d → Status (token "2") every 60s → "SN2.0=60"
+        let (payload, prefix) = try O5AidCommands.PeriodicCommandConfig.payload(periodSeconds: 60)
+        XCTAssertEqual(payload, Data("SN2.0=60".utf8))
+        XCTAssertEqual(payload, Data([0x53, 0x4E, 0x32, 0x2E, 0x30, 0x3D, 0x36, 0x30]))
+        XCTAssertEqual(prefix, "N2.0=")
+    }
+
+    func testPeriodicConfig_disable() throws {
+        let (payload, _) = try O5AidCommands.PeriodicCommandConfig.payload(periodSeconds: 0)
+        XCTAssertEqual(payload, Data("SN2.0=0".utf8))
+    }
+
+    func testPeriodicConfig_setOnlyHasNoGetSuffix() throws {
+        let (payload, _) = try O5AidCommands.PeriodicCommandConfig.payload(periodSeconds: 300)
+        let str = String(data: payload, encoding: .utf8)
+        XCTAssertEqual(str, "SN2.0=300")
+        XCTAssertFalse(str!.contains(",G"))
+    }
+
+    func testPeriodicConfig_rejectsBelowMinimum() {
+        XCTAssertThrowsError(try O5AidCommands.PeriodicCommandConfig.payload(periodSeconds: 30)) { error in
+            guard case O5AidCommands.PeriodicCommandConfig.ConfigError.periodBelowMinimum(let s) = error else {
+                return XCTFail("expected periodBelowMinimum, got \(error)")
+            }
+            XCTAssertEqual(s, 30)
+        }
+    }
 }

@@ -516,7 +516,11 @@ class BlePodMessageTransport: MessageTransport {
     ///   - wrappedPayload: SLPE-wrapped command data (from O5AidCommands)
     ///   - responsePrefix: The SLPE key to extract from the response (e.g., "3.2=", "ES255.2=")
     /// - Returns: The raw response data after SLPE unwrapping
-    func sendO5AidCommand(_ wrappedPayload: Data, responsePrefix: String) throws -> Data {
+    /// - Parameter requireResponsePrefix: when false, the response is returned as-is (full
+    ///   decrypted payload) without enforcing `responsePrefix`. Used for EXPERIMENTAL commands
+    ///   whose ack format is not yet known (e.g. the periodic-config command), so an unexpected
+    ///   response is logged and returned rather than throwing.
+    func sendO5AidCommand(_ wrappedPayload: Data, responsePrefix: String, requireResponsePrefix: Bool = true) throws -> Data {
         guard let enDecrypt = self.enDecrypt else {
             throw PodCommsError.podNotConnected
         }
@@ -566,13 +570,21 @@ class BlePodMessageTransport: MessageTransport {
         // AID responses use plain ASCII key=value format (no SLPE length prefix),
         // so we just strip the prefix and return everything after it.
         let prefixData = Data(responsePrefix.utf8)
-        guard decrypted.payload.count >= prefixData.count,
-              decrypted.payload.prefix(prefixData.count) == prefixData else {
+        let hasPrefix = decrypted.payload.count >= prefixData.count
+            && decrypted.payload.prefix(prefixData.count) == prefixData
+        let responseData: Data
+        if hasPrefix {
+            responseData = decrypted.payload.suffix(from: prefixData.count)
+        } else if requireResponsePrefix {
             log.error("O5 AID response prefix '%{public}@' not found in payload: %{public}@",
                        responsePrefix, decrypted.payload.hexadecimalString)
             throw PodProtocolError.messageIOException("AID response prefix '\(responsePrefix)' not found in payload")
+        } else {
+            // Lenient mode: prefix not required — return the full decrypted payload (still ACK below).
+            log.default("O5 AID lenient response (prefix '%{public}@' absent), returning full payload",
+                        responsePrefix)
+            responseData = decrypted.payload
         }
-        let responseData = decrypted.payload.suffix(from: prefixData.count)
 
         log.default("O5 AID Recv (%{public}d bytes): %{public}@",
                      responseData.count, responseData.hexadecimalString)

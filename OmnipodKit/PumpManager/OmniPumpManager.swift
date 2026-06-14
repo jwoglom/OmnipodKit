@@ -342,6 +342,25 @@ public class OmniPumpManager: RileyLinkPumpManager {
         return nil
     }
 
+    /// EXPERIMENTAL debug toggle — ask the pod to emit periodic Status every `intervalSeconds`
+    /// (>= 60; default 300), so it would push a heartbeat the host can wake on instead of the
+    /// host polling. This is OPT-IN only: nothing calls it automatically — invoke it explicitly
+    /// (debug menu / lldb / a test) while a pod is connected.
+    ///
+    /// ⚠️ NOT SAFE on a pod delivering insulin to a person. The single config exchange is
+    /// nonce-safe, but if the pod then emits Status autonomously, OmnipodKit's shared CCM
+    /// nonce counter desyncs on the next command and the session dies until re-pair (see
+    /// analysis/omnipodkit_periodic_command_design.md). The `SN<list>.0=<seconds>` wire format
+    /// and the pod's acceptance are RECONSTRUCTED FROM THE iOS APP AND UNCONFIRMED ON THE WIRE.
+    /// Use a spare/test pod and watch the device-comm log for the `[RX-OBSERVE]` lines.
+    public func configurePodPeriodicStatus(intervalSeconds: Int = 300, completion: @escaping (Error?) -> Void) {
+        guard let blePodComms = self.podComms as? BlePodComms else {
+            completion(OmniPumpManagerError.podTypeNotConfigured)
+            return
+        }
+        blePodComms.configurePeriodicStatus(intervalSeconds: intervalSeconds, completion: completion)
+    }
+
     var provideHeartbeat: Bool = false  // Not persisted
 
     private var lastHeartbeat: Date = .distantPast

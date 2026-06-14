@@ -664,6 +664,61 @@ class BlePodComms: PodComms {
         }
     }
 
+    /// EXPERIMENTAL debug toggle — configure the pod to emit periodic Status via the
+    /// `SN<list>.0=<seconds>` command (see `O5AidCommands.PeriodicCommandConfig`).
+    /// Reconstructed from the iOS O5 app static decode; the wire/ack format is UNVERIFIED,
+    /// so this uses lenient response handling (logs whatever the pod returns rather than
+    /// failing on a prefix mismatch). Requires an active connection.
+    ///
+    /// ⚠️ SAFETY — DO NOT run against a pod delivering insulin to a person. This sends a
+    /// single synchronous request/response (nonce-safe in isolation), BUT if the pod then
+    /// *honours* it and begins emitting Status autonomously, OmnipodKit's shared monotonic
+    /// CCM nonce counter (`nonceSeq`) will desync on the next command → AES-CCM MAC failures
+    /// → dead session until re-pair. See analysis/omnipodkit_periodic_command_design.md §2-3d.
+    /// Use only on a spare/test pod. Watch the device-comm log for the SN bytes + response,
+    /// then for any unsolicited "[RX-OBSERVE]" frames on subsequent connects.
+    func configurePeriodicStatus(intervalSeconds: Int, completion: @escaping (Error?) -> Void) {
+        guard let manager = manager, manager.peripheral.state == .connected else {
+            completion(PodCommsError.podNotConnected)
+            return
+        }
+
+        manager.runSession(withName: "Configure Periodic Status") { () in
+            self.podStateLock.lock()
+            defer { self.podStateLock.unlock() }
+
+            guard self.podState != nil else {
+                completion(PodCommsError.noPodPaired)
+                return
+            }
+
+            let transport = BlePodMessageTransport(manager: manager, myId: self.myId, podId: self.podId, state: self.podState!.bleMessageTransportState, signingKey: self.podState!.signingKey)
+            transport.messageLogger = self.messageLogger
+
+            defer {
+                // Persist the advanced seq/nonce so the next command stays in sync. (Unlike
+                // handleO5Setup we also preserve eapSeq rather than reset it, since this runs
+                // post-setup.)
+                self.podState!.bleMessageTransportState = BleMessageTransportState(ck: transport.ck, noncePrefix: transport.noncePrefix, eapSeq: transport.eapSeq, msgSeq: transport.msgSeq, nonceSeq: transport.nonceSeq, messageNumber: transport.messageNumber)
+            }
+
+            do {
+                let (payload, prefix) = try O5AidCommands.PeriodicCommandConfig.payload(periodSeconds: intervalSeconds)
+                self.messageLogger?.observe("[RX-OBSERVE] periodic-config SEND (period=\(intervalSeconds)s): \(payload.hexadecimalString)")
+                self.log.info("@@@ [PERIODIC] sending config (period=%{public}d s): %{public}@", intervalSeconds, payload.hexadecimalString)
+                let response = try transport.sendO5AidCommand(payload, responsePrefix: prefix, requireResponsePrefix: false)
+                let respStr = String(data: response, encoding: .utf8) ?? response.hexadecimalString
+                self.messageLogger?.observe("[RX-OBSERVE] periodic-config RESP (\(response.count) bytes): \(respStr)")
+                self.log.info("@@@ [PERIODIC] config response (%{public}d bytes): %{public}@", response.count, respStr)
+                completion(nil)
+            } catch {
+                self.messageLogger?.observe("[RX-OBSERVE] periodic-config FAILED: \(String(describing: error))")
+                self.log.error("@@@ [PERIODIC] config failed: %{public}@", String(describing: error))
+                completion(error)
+            }
+        }
+    }
+
 
     // MARK: - CustomDebugStringConvertible
 
