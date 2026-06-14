@@ -3134,6 +3134,13 @@ extension OmniPumpManager: MessageLogger {
     func didError(_ message: String) {
         self.logDeviceCommunication(message, type: .error)
     }
+
+    // [RX-OBSERVE] Route low-level observation strings (heartbeat cadence,
+    // unsolicited inbound characteristic updates) into Trio's exportable
+    // in-app device log via logDeviceCommunication. Observation-only.
+    func observe(_ message: String) {
+        self.logDeviceCommunication(message, type: .receive)
+    }
 }
 
 extension OmniPumpManager: PodCommsDelegate {

@@ -19,6 +19,13 @@ class BlePodComms: PodComms {
     var manager: PeripheralManager? {
         didSet {
             manager?.delegate = self
+            // [RX-OBSERVE] Forward our messageLogger (OmniPumpManager) into the
+            // PeripheralManager so low-level observation strings reach
+            // logDeviceCommunication / Trio's exportable in-app device log.
+            // messageLogger is assigned during OmniPumpManager.finishInit before
+            // any pod connects, so it is already set by the time manager is
+            // assigned (connectToNewPod / restore / reconnect). Observation-only.
+            manager?.observeLogger = messageLogger
         }
     }
 

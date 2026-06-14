@@ -79,6 +79,14 @@ class PeripheralManager: NSObject {
 
     weak var delegate: PeripheralManagerDelegate?
 
+    /// [RX-OBSERVE] Optional sink for observation-only log strings emitted from
+    /// the low-level BLE layer (heartbeat cadence, unsolicited inbound
+    /// characteristic updates). Set by the owning BlePodComms to its
+    /// messageLogger (OmniPumpManager), which forwards into
+    /// logDeviceCommunication so the lines appear in Trio's exportable in-app
+    /// device log. nil-safe; no comms behavior depends on it.
+    weak var observeLogger: MessageLogger?
+
     init(peripheral: CBPeripheral, podType: PodType, centralManager: CBCentralManager) {
         self.peripheral = peripheral
         self.central = centralManager
@@ -480,6 +488,10 @@ extension PeripheralManager: CBPeripheralDelegate {
             PeripheralManager.rxObserveLastSeen[uuid] = now
             let hex = characteristic.value?.hexadecimalString ?? "<nil>"
             let len = characteristic.value?.count ?? 0
+            // Emit via observeLogger so the inbound-update record reaches Trio's
+            // exportable in-app device log (OmniPumpManager.logDeviceCommunication),
+            // in addition to the OSLog line below for Console.app / sysdiagnose.
+            observeLogger?.observe("[RX-OBSERVE] char=\(uuid.uuidString) delta=\(intervalStr) len=\(len) bytes=\(hex)")
             log.default("[RX-OBSERVE] char=%{public}@ delta=%{public}@ len=%{public}@ bytes=%{public}@",
                         uuid.uuidString, intervalStr, String(len), hex)
         }
@@ -633,12 +645,17 @@ extension PeripheralManager {
     func handleHeartbeat() {
         let now = Date()
         // [RX-OBSERVE] Is the 7DED7A6C beacon autonomous, and at what cadence?
+        // Emit via observeLogger so the cadence reaches Trio's exportable in-app
+        // device log (OmniPumpManager.logDeviceCommunication), in addition to
+        // the OSLog line below for Console.app / sysdiagnose.
+        let intervalStr: String
         if let prev = PeripheralManager.lastHeartbeatTime {
-            log.default("[RX-OBSERVE] O5 heartbeat (7DED7A6C) interval=%{public}@",
-                        String(format: "%.1fs", now.timeIntervalSince(prev)))
+            intervalStr = String(format: "%.1fs", now.timeIntervalSince(prev))
         } else {
-            log.default("[RX-OBSERVE] O5 heartbeat (7DED7A6C) first beat")
+            intervalStr = "first"
         }
+        observeLogger?.observe("[RX-OBSERVE] heartbeat 7DED7A6C interval=\(intervalStr)")
+        log.default("[RX-OBSERVE] O5 heartbeat (7DED7A6C) interval=%{public}@", intervalStr)
         PeripheralManager.lastHeartbeatTime = now
         log.debug("Received O5 heartbeat at %{public}@", String(describing: now))
 
