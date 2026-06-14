@@ -21,6 +21,7 @@ protocol DiagnosticCommands {
     func readTriggeredAlerts() async throws -> String
     func getDetailedStatus() async throws -> DetailedStatus
     func pumpManagerDetails() -> String
+    func configurePeriodicStatus(intervalSeconds: Int) async throws -> String
 }
 
 struct PodDiagnosticsView: View  {
@@ -96,6 +97,21 @@ struct PodDiagnosticsView: View  {
                 FrameworkLocalText("Pump Manager Details", comment: "Text for pump manager details navigation link")
                     .foregroundColor(Color.primary)
             }
+
+            // EXPERIMENTAL — pod-driven heartbeat research. Sends the reconstructed
+            // SN2.0=<seconds> periodic-status config command. UNCONFIRMED wire format;
+            // can desync the session on a pod that honours it. Use a spare/test pod.
+            // See analysis/omnipodkit_periodic_command_design.md.
+            NavigationLink(destination: ReadPodInfoView(
+                title: LocalizedString("Configure Periodic Status", comment: "Title for experimental configure periodic status"),
+                actionString: LocalizedString("Sending periodic-status config...", comment: "Action text for configure periodic status"),
+                failedString: LocalizedString("Failed to configure periodic status", comment: "Alert title for configure periodic status error"),
+                action: { try await diagnosticCommands.configurePeriodicStatus(intervalSeconds: 300) }))
+            {
+                FrameworkLocalText("⚠️ Configure Periodic Status (EXPERIMENTAL)", comment: "Text for experimental configure periodic status navigation link")
+                    .foregroundColor(Color.primary)
+            }
+            .disabled(!podOk)
 
         }
         .insetGroupedListStyle()

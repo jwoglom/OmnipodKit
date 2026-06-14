@@ -692,4 +692,22 @@ extension OmniPumpManager: DiagnosticCommands {
     func pumpManagerDetails() -> String {
         return debugDescription
     }
+
+    /// EXPERIMENTAL — send the reconstructed O5 periodic-status config command
+    /// (`SN2.0=<seconds>`) to the pod. See `configurePodPeriodicStatus` and
+    /// analysis/omnipodkit_periodic_command_design.md for the safety caveats
+    /// (wire format unconfirmed; can desync the session on a pod that honours it
+    /// — use a spare/test pod). The SN bytes and the pod's response are written
+    /// to the device-comm log as `[RX-OBSERVE]` lines; this returns a status note.
+    func configurePeriodicStatus(intervalSeconds: Int) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            self.configurePodPeriodicStatus(intervalSeconds: intervalSeconds) { error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: "Sent periodic-status config (SN2.0=\(intervalSeconds), i.e. Status every \(intervalSeconds)s).\n\nEXPERIMENTAL / UNCONFIRMED wire format. Check the device-comm log for the '[RX-OBSERVE] periodic-config SEND/RESP' lines to see the exact bytes and whether the pod ACKed or rejected, then watch subsequent connects for any unsolicited '[RX-OBSERVE]' frames.")
+                }
+            }
+        }
+    }
 }
