@@ -181,6 +181,12 @@ extension PeripheralManager {
             log.error("[readMessagePacket] Error reading message: %{public}@. peripheral state=%{public}@",
                       String(describing: error),
                       String(describing: peripheral.state))
+            // [RX-OBSERVE] Surface the REAL underlying error into the device-comm
+            // log (Trio export). readMessagePacket otherwise rethrows a generic
+            // .incorrectResponse, masking whether this was a read timeout
+            // (unresponsive pod), a sequence mismatch, a NACK, etc. — needed to
+            // diagnose experimental commands like the periodic-config send.
+            observeLogger?.observe("[RX-OBSERVE] readMessagePacket failed: \(String(describing: error)) (state=\(String(describing: peripheral.state))) -> rethrown as incorrectResponse")
             if let error = error as? PeripheralManagerError, error.isSymptomaticOfUnresponsivePod {
                 if peripheral.state == .connected {
                     log.error("[readMessagePacket] Disconnecting due to unresponsive pod error while reading")
