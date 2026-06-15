@@ -37,6 +37,21 @@ class BlePodComms: PodComms {
 
     private var needsSessionEstablishment: Bool = false
 
+    /// EXPERIMENTAL — default OFF. When true, the periodic-status config command
+    /// (`SN2.0=<sec>`) is injected at the END of the O5 AID setup sequence — the
+    /// AID-config phase where the pod accepts AID ASCII commands and the session
+    /// seq/keys are current (the "right place" the Diagnostics-screen attempt lacked).
+    /// This is NOT the same as enabling Automated Mode: it only asks the pod to emit
+    /// Status periodically (no CGM pairing, no SmartAdjust, no autonomous dosing).
+    ///
+    /// ⚠️ RISK: a 7h Manual-Mode capture shows the pod's 0x08 heartbeat is
+    /// Automated-Mode-gated, so the pod may simply ignore `SN` during a Manual-Mode
+    /// setup. If it does, the response read times out and readMessagePacket
+    /// DISCONNECTS — which can ABORT this pod activation. Enable ONLY for a spare/
+    /// test pod you are willing to re-activate. See
+    /// analysis/omnipodkit_pod_heartbeat_integration.md.
+    static var experimentalSendPeriodicConfigDuringSetup = false
+
     private var bluetoothManager: BluetoothManager!
 
     override init(podState: PodState?, podType: PodType, myId: UInt32 = 0, podId: UInt32 = 0) {
@@ -468,6 +483,30 @@ class BlePodComms: PodComms {
             } catch {
                 log.error("@@@ O5 AID [9/9]: AID Pod Status command failed: %{public}@", String(describing: error))
                 throw error
+            }
+        }
+
+        // EXPERIMENTAL (default OFF) — inject the periodic-status config here, in the
+        // AID-config phase (pod accepts AID commands; session seq/keys current). Sent
+        // LAST so all real setup commands are already done. Non-fatal catch, BUT note:
+        // if the pod ignores SN, the read timeout disconnects in readMessagePacket and
+        // the subsequent setupPod() will fail — i.e. this CAN abort activation. Off by
+        // default; test-pod only. See experimentalSendPeriodicConfigDuringSetup.
+        if BlePodComms.experimentalSendPeriodicConfigDuringSetup {
+            log.default("@@@ O5 AID [periodic]: EXPERIMENTAL — sending periodic-status config (SN2.0=300) during setup")
+            do {
+                let (payload, prefix) = try O5AidCommands.PeriodicCommandConfig.payload(periodSeconds: 300)
+                self.messageLogger?.observe("[RX-OBSERVE] periodic-config SEND during setup (period=300s): \(payload.hexadecimalString)")
+                let response = try transport.sendO5AidCommand(payload, responsePrefix: prefix, requireResponsePrefix: false)
+                let responseStr = String(data: response, encoding: .utf8) ?? response.hexadecimalString
+                self.messageLogger?.observe("[RX-OBSERVE] periodic-config RESP during setup (\(response.count) bytes): \(responseStr)")
+                log.default("@@@ O5 AID [periodic]: response: %{public}@", responseStr)
+            } catch {
+                // Best-effort: log, don't rethrow here. (A read-timeout will already have
+                // disconnected the session, so downstream setupPod() may still fail — the
+                // documented risk of this experiment.)
+                self.messageLogger?.observe("[RX-OBSERVE] periodic-config during setup FAILED: \(String(describing: error))")
+                log.error("@@@ O5 AID [periodic]: failed (a disconnect here may abort setup): %{public}@", String(describing: error))
             }
         }
     }
