@@ -1327,13 +1327,20 @@ extension OmniPumpManager {
                             // Have new podState, reset all the per pod pump manager state
                             self.resetPerPodPumpManagerState()
 
-                            if self.usingInPlayPod == true && self.iPhoneWithPossibleInPlayIssues {
-                                if Storage.shared.podKeepAlive.value == .disabled {
-                                    // Enable the most conservative pod keep alive mode
-                                    // that should work through the for pod setup process.
-                                    self.log.debug("@@@ Enabling pod keep alives")
-                                    Storage.shared.podKeepAlive.value = .whenOpen
-                                }
+                            // Enable pod keep-alive by default during setup so the BLE
+                            // connection is HELD instead of dropping ~3 min after the last
+                            // message (the pod's nominal idle-disconnect). Holding the link is
+                            // the prerequisite for receiving the pod's periodic CMD-char (0x08)
+                            // heartbeat — see analysis/omnipodkit_pod_heartbeat_integration.md.
+                            // .whenOpen is the conservative mode (re-polls before the 3-min
+                            // timeout, foreground + unlocked only); for a background-held link
+                            // raise it to .silentTune in Settings. Only set when the user has
+                            // not already chosen a mode (still .disabled), so a manual choice
+                            // is never overridden. (Previously this only ran for the narrow
+                            // usingInPlayPod && iPhoneWithPossibleInPlayIssues case.)
+                            if Storage.shared.podKeepAlive.value == .disabled {
+                                self.log.debug("@@@ Enabling pod keep-alive (.whenOpen) by default during setup")
+                                Storage.shared.podKeepAlive.value = .whenOpen
                             }
 
                             self.pumpDelegate.notify { (delegate) in
