@@ -322,9 +322,18 @@ extension PeripheralManager {
         dispatchPrecondition(condition: .onQueue(queue))
 
         // Wait for data to be read.
+        // NOTE: both the CMD-char and DATA-char value-update macros signal this
+        // SAME queueLock (BlePodProfile.makePeripheralConfiguration). So a CMD-char
+        // indication — e.g. the 0x04 Success ack — wakes this wait, and the pod
+        // sends its DATA reply ~0.1s AFTER that ack. A single `if`+wait checked the
+        // (still-empty) dataQueue on that spurious wake and bailed with emptyValue
+        // before the DATA reply arrived (observed: it broke the periodic SN command
+        // and aborted pod activation). Loop on spurious wakeups: keep waiting until a
+        // DATA frame actually lands or the real deadline passes.
+        let deadline = Date().addingTimeInterval(timeout)
         queueLock.lock()
-        if (dataQueue.count == 0) {
-            queueLock.wait(until: Date().addingTimeInterval(timeout))
+        while dataQueue.count == 0 && Date() < deadline {
+            queueLock.wait(until: deadline)
         }
         queueLock.unlock()
 
