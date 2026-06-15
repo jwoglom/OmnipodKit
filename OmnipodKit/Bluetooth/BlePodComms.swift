@@ -37,20 +37,21 @@ class BlePodComms: PodComms {
 
     private var needsSessionEstablishment: Bool = false
 
-    /// EXPERIMENTAL — default OFF. When true, the periodic-status config command
-    /// (`SN2.0=<sec>`) is injected at the END of the O5 AID setup sequence — the
-    /// AID-config phase where the pod accepts AID ASCII commands and the session
-    /// seq/keys are current (the "right place" the Diagnostics-screen attempt lacked).
-    /// This is NOT the same as enabling Automated Mode: it only asks the pod to emit
-    /// Status periodically (no CGM pairing, no SmartAdjust, no autonomous dosing).
+    /// EXPERIMENTAL — currently **ENABLED for live testing** (set back to `false`
+    /// to disable). When true, the periodic-status config command (`SN2.0=<sec>`)
+    /// is injected at the END of the O5 AID setup sequence — the AID-config phase
+    /// where the pod accepts AID ASCII commands and the session seq/keys are current
+    /// (the "right place" the Diagnostics-screen attempt lacked). This is NOT the
+    /// same as enabling Automated Mode: it only asks the pod to emit Status
+    /// periodically (no CGM pairing, no SmartAdjust, no autonomous dosing).
     ///
-    /// ⚠️ RISK: a 7h Manual-Mode capture shows the pod's 0x08 heartbeat is
-    /// Automated-Mode-gated, so the pod may simply ignore `SN` during a Manual-Mode
-    /// setup. If it does, the response read times out and readMessagePacket
-    /// DISCONNECTS — which can ABORT this pod activation. Enable ONLY for a spare/
-    /// test pod you are willing to re-activate. See
-    /// analysis/omnipodkit_pod_heartbeat_integration.md.
-    static var experimentalSendPeriodicConfigDuringSetup = false
+    /// ⚠️ RISK (active while this is true): a 7h Manual-Mode capture shows the pod's
+    /// 0x08 heartbeat is Automated-Mode-gated, so the pod may simply ignore `SN`
+    /// during a Manual-Mode setup. If it does, the response read times out and
+    /// readMessagePacket DISCONNECTS — which can ABORT this pod activation. Use a
+    /// spare/test pod you are willing to re-activate. After testing, set this back
+    /// to false. See analysis/omnipodkit_pod_heartbeat_integration.md.
+    static var experimentalSendPeriodicConfigDuringSetup = true
 
     private var bluetoothManager: BluetoothManager!
 
