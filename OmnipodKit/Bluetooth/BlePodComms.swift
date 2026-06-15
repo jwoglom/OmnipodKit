@@ -51,7 +51,7 @@ class BlePodComms: PodComms {
     /// readMessagePacket DISCONNECTS — which can ABORT this pod activation. Use a
     /// spare/test pod you are willing to re-activate. After testing, set this back
     /// to false. See analysis/omnipodkit_pod_heartbeat_integration.md.
-    static var experimentalSendPeriodicConfigDuringSetup = true
+    static var experimentalSendPeriodicConfigDuringSetup = false
 
     private var bluetoothManager: BluetoothManager!
 
