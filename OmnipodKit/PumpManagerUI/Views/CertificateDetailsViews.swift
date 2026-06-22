@@ -14,7 +14,6 @@
 //
 
 import SwiftUI
-import UIKit
 import UniformTypeIdentifiers
 import LoopKit
 import LoopKitUI
