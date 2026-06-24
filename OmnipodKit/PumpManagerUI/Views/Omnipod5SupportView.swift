@@ -10,8 +10,9 @@
 //  same App Attest download flow used by the pairing setup wizard.
 //
 //  The overflow ("…") menu offers "Load custom certificate" (only when no cert is
-//  loaded) and, on DEBUG builds only, "Delete saved certificate" for a deletable
-//  (non-built-in) cert. The menu is hidden entirely when it would have no options.
+//  loaded) and, when the O5_CERTIFICATE_DEBUG compilation flag is defined, "Delete
+//  saved certificate" for a deletable (non-built-in) cert. The menu is hidden
+//  entirely when it would have no options.
 //
 //  Copyright © 2026 LoopKit Authors. All rights reserved.
 //
@@ -61,7 +62,7 @@ struct Omnipod5SupportView: View {
 
     private var menuHasOptions: Bool {
         if !certLoaded { return true }       // "Load custom certificate"
-        #if DEBUG
+        #if O5_CERTIFICATE_DEBUG
         if isDeletable { return true }       // "Delete saved certificate"
         #endif
         return false
@@ -178,7 +179,7 @@ struct Omnipod5SupportView: View {
                             Label(LocalizedString("Load custom certificate", comment: "Menu action to import an o5keypair file"), systemImage: "square.and.arrow.down")
                         }
                     }
-                    #if DEBUG
+                    #if O5_CERTIFICATE_DEBUG
                     if isDeletable {
                         Button(role: .destructive) {
                             pendingDelete = true
