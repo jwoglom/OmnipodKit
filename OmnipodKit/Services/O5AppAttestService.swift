@@ -210,15 +210,28 @@ class O5AppAttestService {
 
         // Resolve the keymanager host so DNS failures surface here as a clear
         // pre-flight error rather than an opaque URLError on the first HTTP call.
-        if let host = URL(string: o5KeyManagerBaseURL)?.host,
-           await resolveHostname(host, timeout: timeout) == false {
-            throw O5AuthError(
-                message: String(format: LocalizedString(
-                    "Couldn’t look up the key-management server (%1$@).",
-                    comment: "O5 fetch failure: DNS resolution failed, primary line (1: host)"), host),
-                recoverySuggestion: LocalizedString(
-                    "Please check your Internet connection and try again.",
-                    comment: "O5 fetch failure: DNS resolution failed, recovery suggestion"))
+        // Retry a couple of times (1s apart) to ride out transient resolver hiccups.
+        if let host = URL(string: o5KeyManagerBaseURL)?.host {
+            let maxAttempts = 3
+            var resolved = false
+            for attempt in 1...maxAttempts {
+                if await resolveHostname(host, timeout: timeout) {
+                    resolved = true
+                    break
+                }
+                if attempt < maxAttempts {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+            if !resolved {
+                throw O5AuthError(
+                    message: String(format: LocalizedString(
+                        "Couldn’t look up the key-management server (%1$@).",
+                        comment: "O5 fetch failure: DNS resolution failed, primary line (1: host)"), host),
+                    recoverySuggestion: LocalizedString(
+                        "Please check your Internet connection and try again.",
+                        comment: "O5 fetch failure: DNS resolution failed, recovery suggestion"))
+            }
         }
     }
 
