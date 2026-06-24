@@ -225,9 +225,9 @@ class O5AppAttestService {
             }
             if !resolved {
                 throw O5AuthError(
-                    message: String(format: LocalizedString(
-                        "Couldn’t look up the key-management server (%1$@).",
-                        comment: "O5 fetch failure: DNS resolution failed, primary line (1: host)"), host),
+                    message: LocalizedString(
+                        "Couldn’t look up the key-management server.",
+                        comment: "O5 fetch failure: DNS resolution failed, primary line"),
                     recoverySuggestion: LocalizedString(
                         "Please check your Internet connection and try again.",
                         comment: "O5 fetch failure: DNS resolution failed, recovery suggestion"))
